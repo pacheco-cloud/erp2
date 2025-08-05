@@ -1,0 +1,94 @@
+services:
+  # Serviço de Ordens de Serviço
+  service_orders_api:
+    build:
+      # CORREÇÃO: Contexto da pasta do serviço de ordens de serviço atualizado
+      context: ./service_orders_api
+      dockerfile: Dockerfile # Agora o Dockerfile é relativo ao novo contexto
+    container_name: erp2-api
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./service_orders_api:/app
+    # CORREÇÃO: Adicionado PYTHONPATH para resolver problemas de importação
+    command: bash -c "export PYTHONPATH=/app && uvicorn main:app --host 0.0.0.0 --port 8000 --reload"
+    depends_on:
+      db_orders:
+        condition: service_healthy
+    environment:
+      - DATABASE_URL=postgresql://user:password@db_orders:5432/db_name_orders
+
+  # Serviço de Clientes
+  client_service_api:
+    build:
+      context: ./client_service_api
+      dockerfile: Dockerfile
+    container_name: erp2-clients-api
+    ports:
+      - "8001:8001"
+    volumes:
+      - ./client_service_api:/app
+    command: bash -c "export PYTHONPATH=/app && uvicorn main:app --host 0.0.0.0 --port 8001 --reload"
+    depends_on:
+      db_clients:
+        condition: service_healthy
+    environment:
+      - DATABASE_URL=postgresql://user:password@db_clients:5432/db_name_clients
+      
+  # Frontend
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: erp2-frontend
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./frontend:/app
+    depends_on:
+      - service_orders_api
+      - client_service_api
+    environment:
+      - REACT_APP_SERVICE_ORDERS_API_URL=http://localhost:8000
+      - REACT_APP_CLIENTS_API_URL=http://localhost:8001
+
+  # Banco de Dados para Ordens de Serviço
+  db_orders:
+    image: postgres:13
+    container_name: erp2-db-orders
+    volumes:
+      - postgres_orders_data:/var/lib/postgresql/data/
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=orders_db
+    ports:
+      - "5433:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # Banco de Dados para Clientes
+  db_clients:
+    container_name: erp2-db-clients
+    image: postgres:13
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=clients_db
+    ports:
+      - "5434:5432"
+    volumes:
+      - postgres_clients_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  postgres_data_orders:
+  postgres_clients_data:
+  postgres_orders_data:
